@@ -64,3 +64,54 @@ class TestNoteCreate(TestCase):
         self.client.force_login(self.user)
         response = self.client.get(self.delete_url_another)
         self.assertEqual(response.status_code, HTTPStatus.NOT_FOUND)
+
+    def test_auto_slug_generation(self):
+        """Если при создании заметки не заполнен slug, он формируется автоматически."""
+        self.client.force_login(self.user)
+        add_url = reverse('notes:add')
+        
+        # Создаем заметку без slug
+        form_data = {
+            'title': 'Тестовая заметка без slug',
+            'text': 'Текст заметки'
+            # slug не передаем
+        }
+        response = self.client.post(add_url, data=form_data)
+        
+        # Проверяем, что заметка создалась с автоматическим slug
+        note = Note.objects.get(title='Тестовая заметка без slug')
+        self.assertIsNotNone(note.slug)
+        self.assertTrue(len(note.slug) > 0)
+
+    def test_duplicate_slug_prevention(self):
+        """Невозможно создать две заметки с одинаковым slug."""
+        self.client.force_login(self.user)
+        add_url = reverse('notes:add')
+        
+        # Пытаемся создать заметку с существующим slug
+        form_data = {
+            'title': 'Новая заметка',
+            'text': 'Текст',
+            'slug': 'user-note-1'  # slug уже существует
+        }
+        response = self.client.post(add_url, data=form_data)
+        
+        # Должна вернуться ошибка формы
+        self.assertIn('form', response.context)
+        self.assertFalse(response.context['form'].is_valid())
+
+    def test_anonymous_user_cannot_create_note(self):
+        """Анонимный пользователь не может создать заметку."""
+        add_url = reverse('notes:add')
+        
+        # GET запрос - должен перенаправить на логин
+        response = self.client.get(add_url)
+        self.assertNotEqual(response.status_code, HTTPStatus.OK)
+        
+        # POST запрос - тоже должен перенаправить
+        form_data = {
+            'title': 'Анонимная заметка',
+            'text': 'Текст'
+        }
+        response = self.client.post(add_url, data=form_data)
+        self.assertNotEqual(response.status_code, HTTPStatus.OK)
